@@ -1,101 +1,104 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-// SPDX-FileCopyrightText: 2025 Jonathan D.A. Jewell <hyperpolymath>
-
-= big-up - a D-based alernaive to those free things with the non-stop adverts
-
-image:[AGPL-3.0,link="https://www.gnu.org/licenses/agpl-3.0"] image:[Palimpsest,link="https://github.com/hyperpolymath/palimpsest-licence"]
-:toc: macro
+= Operating Room (formerly big-up)
+image:https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg[AGPL-3.0,link="https://www.gnu.org/licenses/agpl-3.0"]
+image:https://img.shields.io/badge/License-Palimpsest-6a5acd.svg[Palimpsest,link="https://github.com/hyperpolymath/palimpsest-licence"]
+:toc:
 :toclevels: 3
 :icons: font
 :source-highlighter: rouge
 
-A comprehensive system management and hardening tool.
+A **plan-first** system management and hardening tool — designed as a free/open alternative to “optimizer” utilities that nag, exaggerate, or sell fear.
 
 [IMPORTANT]
 ====
-*Project Status: Specification Pending*
+*Project status:* *Specification Pending*
 
-This repository currently contains infrastructure configuration and governance policies only.
-Implementation code and detailed specifications will be uploaded shortly.
+This repository currently contains infrastructure configuration and governance/policy only.
+Implementation code and the detailed specifications will land next.
 ====
 
-toc::[]
+== What it is
 
-== Overview
+Operating Room is the part of the AmbientOps ecosystem responsible for **making changes safely**:
 
-`big-up.sh` is designed to be a comprehensive system management and hardening tool providing:
+* **Scan**: collect evidence (no changes)
+* **Plan**: propose reversible steps with previews
+* **Apply**: execute only an approved plan
+* **Undo**: roll back where possible
+* **Receipt**: produce an auditable report of what was checked/changed
 
-* *Health Checks* — System health monitoring and diagnostics
-* *Multi-stage System Updates* — Staged, rollback-capable system upgrades
-* *Security Hardening* — Automated security configuration and compliance
-* *Remote Management via PSSH* — Parallel SSH operations across fleet
+It is explicitly *anti-fearware*:
 
-== Current Repository Contents
+* No fake “error counts”
+* No “registry cleaning for performance”
+* No dark patterns, countdowns, or scare copy
+* No silent downloads of third-party binaries
 
-[cols="2,3,1"]
+== Design goals
+
+* **Trustworthy**: show evidence, not hype
+* **Reversible-first**: prefer actions that can be undone
+* **Least privilege**: elevation only when strictly necessary
+* **Modular**: features ship as packs/adapters, not a monolith
+* **Cross-platform**: core UI + OS-specific packs
+
+== Planned modules
+
+* **Health checks** (non-mutating diagnostics)
+* **Security hardening** (guided, reversible where possible)
+* **Staged updates** (checkpoints + rollback strategy)
+* **Receipts & undo** (always-on audit trail)
+* **Packs & adapters** (OS packs + optional connectors)
+
+Remote / fleet capabilities may exist later, but the primary focus is the **everyday single-machine user**.
+
+== Implementation approach (language)
+
+Operating Room will be **D-first**, with **Rust for safety-critical components**.
+
+* **D**: orchestration, core CLI, plan engine, pack runtime, high-velocity implementation
+* **Rust (optional/targeted)**: privileged helpers, sandboxed runners, high-assurance execution paths
+
+This keeps the project aligned with “do real work” ergonomics while still giving us a place to put the most sensitive code paths.
+
+== Repository contents (current)
+
+[cols="1,3,1",options="header"]
 |===
-|Component |Description |Status
+| Component | Description | Status
 
-|`.github/workflows/mirror.yml`
-|Hub-and-spoke multi-forge mirroring (GitLab, Codeberg, Bitbucket)
-|✓ Active
+| `.github/workflows/mirror.yml`
+| Hub-and-spoke multi-forge mirroring (GitLab, Codeberg, Bitbucket)
+| ✓ Active
 
-|`.github/workflows/instant-sync.yml`
-|Automatic forge propagation on push/release
-|✓ Active
+| `.github/workflows/instant-sync.yml`
+| Automatic forge propagation on push/release
+| ✓ Active
 
-|`.claude/CLAUDE.md`
-|Hyperpolymath Standard — technology governance policy
-|✓ Active
+| `.claude/CLAUDE.md`
+| Technology governance policy
+| ✓ Active
 
-|Source implementation
-|Core functionality
-|⏳ Pending
+| Implementation code
+| Core functionality
+| ⏳ Pending
 
-|Specification documents
-|Detailed design and architecture
-|⏳ Pending
+| Specifications
+| Detailed design and architecture
+| ⏳ Pending
 |===
 
-== Technology Governance
+== Security requirements (baseline)
 
-This project adheres to the *Hyperpolymath Standard* for technology selection.
-
-=== Preferred Stack
-
-[horizontal]
-Systems/CLI:: Rust
-Application Code:: ReScript (compiles to JS)
-Runtime:: Deno (replaces Node.js/npm)
-Backend Services:: Gleam (BEAM or JS target)
-Mobile:: Tauri 2.0+ / Dioxus (Rust-first, no Kotlin/Swift)
-Configuration:: Nickel
-State/Meta:: Guile Scheme
-
-=== Security Requirements
-
-* SHA-256+ for all cryptographic operations (no MD5/SHA1)
-* HTTPS only — no plain HTTP
+* No MD5/SHA1
+* HTTPS only
 * No hardcoded secrets
-* SHA-pinned dependencies
-* SPDX license headers on all files
-
-See link:.claude/CLAUDE.md[CLAUDE.md] for complete policy.
-
-== Multi-Forge Distribution
-
-This repository is automatically mirrored to:
-
-* https://gitlab.com/hyperpolymath/big-up-sh[GitLab]
-* https://codeberg.org/hyperpolymath/big-up-sh[Codeberg]
-* https://bitbucket.org/hyperpolymath/big-up-sh[Bitbucket]
-
-Mirrors are force-pushed to maintain exact state across all forges.
+* Dependencies must be pinned/locked
+* Every change must produce a receipt (scan and apply)
 
 == License
 
-AGPL-3.0-or-later
+AGPL-3.0-or-later (plus Palimpsest where indicated).
 
 == Roadmap
 
-See link:ROADMAP.adoc[ROADMAP.adoc] for development phases and milestones.
+See `ROADMAP.adoc`.
