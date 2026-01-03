@@ -167,7 +167,7 @@ Every claim must be backed by evidence in the Evidence Envelope.
     ],
     "verification": {
       "reproducible": true,
-      "command": "jusys verify-claim --receipt-id xyz"
+      "command": "sysobs verify-claim --receipt-id xyz"
     }
   }
 }

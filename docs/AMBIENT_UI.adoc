@@ -264,7 +264,7 @@ Users control notification behavior:
 
 The ambient UI aggregates data from:
 
-. **JuSys**: Metrics, trends, forecasts
+. **System Observatory**: Metrics, trends, forecasts
 . **Operating Theatre**: Last scan results
 . **A&E**: Panic-safe intake status
 . **System APIs**: Live metrics (memory, disk)
@@ -285,7 +285,7 @@ The ambient UI aggregates data from:
 
 | Trends/forecasts
 | 5-15 minutes
-| JuSys
+| System Observatory
 
 | State calculation
 | On data change

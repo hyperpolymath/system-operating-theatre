@@ -29,7 +29,7 @@ This document analyzes the integration seams, failure modes, and attack surfaces
 |V-layer emergency trigger and diagnostics
 |V (Verification/Validation)
 
-|jusys
+|system-observatory
 |Satellite
 |Observability metrics and correlation
 |Monitoring
@@ -77,7 +77,7 @@ This document analyzes the integration seams, failure modes, and attack surfaces
            │                        │                        │
            ▼                        ▼                        ▼
 ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-│ system-emergency │    │ system-operating │    │      jusys       │
+│ system-emergency │    │ system-operating │    │      system-observatory       │
 │      -room       │───▶│     -theatre     │───▶│  (Observability) │
 │   (V-layer)      │    │    (D-layer)     │    │                  │
 └──────────────────┘    └──────────────────┘    └──────────────────┘
@@ -106,7 +106,7 @@ This document analyzes the integration seams, failure modes, and attack surfaces
 |procedure-plan.schema.json, pack-manifest.schema.json
 
 |SEAM-03
-|contracts → jusys
+|contracts → system-observatory
 |run-bundle.schema.json, system-weather.schema.json
 
 |SEAM-04
@@ -114,11 +114,11 @@ This document analyzes the integration seams, failure modes, and attack surfaces
 |Incident triggers procedure execution
 
 |SEAM-05
-|theatre → jusys
+|theatre → system-observatory
 |Execution results feed observability
 
 |SEAM-06
-|jusys → emergency-room
+|system-observatory → emergency-room
 |Anomaly detection triggers incidents
 
 |SEAM-07
@@ -128,9 +128,9 @@ This document analyzes the integration seams, failure modes, and attack surfaces
 
 == Critical Issues
 
-=== CRIT-001: GenServer Race Condition in JuSys Correlator
+=== CRIT-001: GenServer Race Condition in System Observatory Correlator
 
-*Location:* `jusys/lib/jusys/correlator.ex`
+*Location:* `system-observatory/lib/system-observatory/correlator.ex`
 
 *Description:* The correlator uses `handle_cast` for adding correlations but `handle_call` for retrieval. Under high load, correlations may be added after a retrieval has already started its calculation, leading to inconsistent results.
 
@@ -197,7 +197,7 @@ fn execute_backup(path string) !BackupResult {
 
 === CRIT-003: "Never Source of Truth" Principle Violation
 
-*Location:* `jusys/lib/jusys/metrics/store.ex`
+*Location:* `system-observatory/lib/system-observatory/metrics/store.ex`
 
 *Principle from ECOSYSTEM.scm:*
 [source,scheme]
@@ -206,7 +206,7 @@ fn execute_backup(path string) !BackupResult {
   "NEVER source of truth - only observes")
 ----
 
-*Violation:* JuSys stores derived state that other systems query as authoritative:
+*Violation:* System Observatory stores derived state that other systems query as authoritative:
 
 1. Correlation confidence scores are used to make routing decisions
 2. System weather calculations drive alerting thresholds
@@ -218,7 +218,7 @@ fn execute_backup(path string) !BackupResult {
 1. Add `derived_at` timestamps to all stored metrics
 2. Add `source_events` array for provenance
 3. Add TTL/staleness indicators
-4. Document clearly that all JuSys data is advisory
+4. Document clearly that all System Observatory data is advisory
 
 === CRIT-004: Cross-Schema Reference Chain Unvalidated
 
@@ -403,7 +403,7 @@ fn generate_incident_id() string {
 
 === HIGH-006: Confidence Scoring Inversion
 
-*Location:* `jusys/lib/jusys/correlator.ex`
+*Location:* `system-observatory/lib/system-observatory/correlator.ex`
 
 *Description:* Confidence scoring logic is inverted - more correlated changes yield *lower* confidence:
 
@@ -433,7 +433,7 @@ end
 
 === HIGH-007: O(n²) Correlation Calculation
 
-*Location:* `jusys/lib/jusys/correlator.ex`
+*Location:* `system-observatory/lib/system-observatory/correlator.ex`
 
 *Description:* Every correlation check compares against all historical events.
 
@@ -529,7 +529,7 @@ end
 |theatre
 |ISO 8601 string
 
-|jusys
+|system-observatory
 |Elixir DateTime struct
 |===
 
@@ -562,14 +562,14 @@ end
 
 === MED-006: No Graceful Degradation Paths
 
-*Description:* If JuSys is down, other systems have no fallback behavior.
+*Description:* If System Observatory is down, other systems have no fallback behavior.
 
 *Remediation:* Define degraded operation modes:
 [cols="1,2,2"]
 |===
 |Subsystem Down |Affected |Degraded Behavior
 
-|jusys
+|system-observatory
 |All
 |Queue events locally, continue operation
 
@@ -663,7 +663,7 @@ for file in "${DIR}"/*; do
 
 |CRIT-001
 |Fix GenServer race condition
-|JuSys
+|System Observatory
 
 |CRIT-002
 |Sanitize path inputs in backup.v
@@ -685,8 +685,8 @@ for file in "${DIR}"/*; do
 |ID |Action |Owner
 
 |CRIT-003
-|Add provenance tracking to JuSys
-|JuSys
+|Add provenance tracking to System Observatory
+|System Observatory
 
 |CRIT-004
 |Implement cross-schema validator
@@ -702,7 +702,7 @@ for file in "${DIR}"/*; do
 
 |HIGH-006
 |Fix confidence scoring
-|JuSys
+|System Observatory
 
 |HIGH-008
 |Add path traversal guards
@@ -721,7 +721,7 @@ for file in "${DIR}"/*; do
 
 |HIGH-007
 |Optimize correlation algorithm
-|JuSys
+|System Observatory
 
 |MED-001
 |Implement error envelope
@@ -818,8 +818,8 @@ Deno.test("Schema v1.0 payloads validate against v1.1", async () => {
 [source,typescript]
 ----
 // tests/chaos/circuit_breaker_test.ts
-Deno.test("System degrades gracefully when JuSys unavailable", async () => {
-  await chaos.killService("jusys");
+Deno.test("System degrades gracefully when System Observatory unavailable", async () => {
+  await chaos.killService("system-observatory");
   const incident = await emergencyRoom.createIncident();
   // Should succeed, queue metrics for later
   assertEquals(incident.created, true);
@@ -872,7 +872,7 @@ Deno.test("System degrades gracefully when JuSys unavailable", async () => {
 
 The System Tools ecosystem has a solid architectural foundation with clear separation of concerns. The critical issues identified are fixable within the immediate and Sprint 1 timeframes. Key priorities:
 
-1. **Fix race conditions** in JuSys correlator
+1. **Fix race conditions** in System Observatory correlator
 2. **Sanitize all inputs** in emergency-room
 3. **Enforce anti-fearware rules** via schema constraints
 4. **Add cross-schema validation** for reference chains
@@ -895,7 +895,7 @@ With these remediations, the system will be more dependable, secure, and maintai
          │              │              │              │
          ▼              ▼              ▼              ▼
 ┌────────────────┐ ┌────────────────┐    ┌────────────────────────────────┐
-│system-emergency│ │system-operating│    │            jusys               │
+│system-emergency│ │system-operating│    │            system-observatory               │
 │     -room      │ │    -theatre    │    │  ┌────────────────────────┐   │
 │                │ │                │    │  │    metrics/store.ex    │   │
 │ ┌────────────┐ │ │ ┌────────────┐ │    │  │ (CRIT-001: race cond.) │   │
@@ -922,7 +922,7 @@ With these remediations, the system will be more dependable, secure, and maintai
 |Issue |Subsystem |File(s) |Related Issues
 
 |CRIT-001
-|jusys
+|system-observatory
 |correlator.ex
 |HIGH-006, HIGH-007
 
@@ -932,7 +932,7 @@ With these remediations, the system will be more dependable, secure, and maintai
 |MED-008
 
 |CRIT-003
-|jusys
+|system-observatory
 |store.ex
 |MED-004
 
@@ -967,12 +967,12 @@ With these remediations, the system will be more dependable, secure, and maintai
 |—
 
 |HIGH-006
-|jusys
+|system-observatory
 |correlator.ex
 |CRIT-001
 
 |HIGH-007
-|jusys
+|system-observatory
 |correlator.ex
 |CRIT-001
 

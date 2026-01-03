@@ -25,9 +25,9 @@
       (relationship "triggers")
       (description "Emergency room triggers theatre procedures"))
 
-    (satellite "jusys"
+    (satellite "system-observatory"
       (relationship "feeds")
-      (description "Theatre execution results feed into jusys observability")))
+      (description "Theatre execution results feed into system-observatory observability")))
 
   (related-projects
     (project "ambientops"
@@ -49,4 +49,4 @@
   (what-this-is-not
     "Not the execution engine - that's in individual tools"
     "Not the contracts - those are in system-tools-contracts"
-    "Not observability - that's jusys"))
+    "Not observability - that's system-observatory"))
