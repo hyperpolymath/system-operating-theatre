@@ -1,25 +1,26 @@
-= Operating Room (formerly big-up)
-
-image:https://img.shields.io/badge/License-AGPL_3.0-blue.svg[AGPL-3.0,link="https://opensource.org/licenses/AGPL-3.0"]
-image:https://img.shields.io/badge/Philosophy-Palimpsest-purple.svg[Palimpsest,link="https://github.com/hyperpolymath/palimpsest-licence"]
-
+// SPDX-License-Identifier: AGPL-3.0-or-later
+= System Operating Theatre
 :toc:
 :toclevels: 3
 :icons: font
 :source-highlighter: rouge
 
-A **plan-first** system management and hardening tool — designed as a free/open alternative to “optimizer” utilities that nag, exaggerate, or sell fear.
+image:https://img.shields.io/badge/License-AGPL_3.0-blue.svg[AGPL-3.0,link="https://opensource.org/licenses/AGPL-3.0"]
+image:https://img.shields.io/badge/Philosophy-Palimpsest-purple.svg[Palimpsest,link="https://github.com/hyperpolymath/palimpsest-licence"]
+
+A **plan-first** system management and hardening tool — designed as a free/open alternative to "optimizer" utilities that nag, exaggerate, or sell fear.
 
 [NOTE]
 ====
-*Project status:* *Alpha - CLI Implementation Present*
+*Project status:* *Alpha - Core Implementation Complete*
 
-The core `sor` CLI is implemented in D. Run `./sor help` for available commands.
+The `sor` CLI implements the scan→plan→apply→undo→receipt workflow.
+Run `./sor help` for available commands.
 ====
 
 == What it is
 
-Operating Room is the part of the AmbientOps ecosystem responsible for **making changes safely**:
+Operating Theatre is the part of the AmbientOps ecosystem responsible for **making changes safely**:
 
 * **Scan**: collect evidence (no changes)
 * **Plan**: propose reversible steps with previews
@@ -29,8 +30,8 @@ Operating Room is the part of the AmbientOps ecosystem responsible for **making 
 
 It is explicitly *anti-fearware*:
 
-* No fake “error counts”
-* No “registry cleaning for performance”
+* No fake "error counts"
+* No "registry cleaning for performance"
 * No dark patterns, countdowns, or scare copy
 * No silent downloads of third-party binaries
 
@@ -39,27 +40,8 @@ It is explicitly *anti-fearware*:
 * **Trustworthy**: show evidence, not hype
 * **Reversible-first**: prefer actions that can be undone
 * **Least privilege**: elevation only when strictly necessary
-* **Modular**: features ship as packs/adapters, not a monolith
-* **Cross-platform**: core UI + OS-specific packs
-
-== Planned modules
-
-* **Health checks** (non-mutating diagnostics)
-* **Security hardening** (guided, reversible where possible)
-* **Staged updates** (checkpoints + rollback strategy)
-* **Receipts & undo** (always-on audit trail)
-* **Packs & adapters** (OS packs + optional connectors)
-
-Remote / fleet capabilities may exist later, but the primary focus is the **everyday single-machine user**.
-
-== Implementation approach (language)
-
-Operating Room will be **D-first**, with **Rust for safety-critical components**.
-
-* **D**: orchestration, core CLI, plan engine, pack runtime, high-velocity implementation
-* **Rust (optional/targeted)**: privileged helpers, sandboxed runners, high-assurance execution paths
-
-This keeps the project aligned with “do real work” ergonomics while still giving us a place to put the most sensitive code paths.
+* **Modular**: features ship as packs, not a monolith
+* **Ecosystem**: integrates with Observatory, Emergency Room, Ward
 
 == Building
 
@@ -71,84 +53,138 @@ This keeps the project aligned with “do real work” ergonomics while still gi
 On Fedora Kinoite:
 [source,bash]
 ----
-toolbox run sudo dnf install ldc ldc-libs
+toolbox create
+toolbox enter
+sudo dnf install ldc ldc-libs
 ----
 
 === Compile
 
 [source,bash]
 ----
-toolbox run dub build --release
+dub build --release
 ----
 
 The binary will be at `./sor`.
 
 == Usage
 
+=== Plan-first workflow
+
 [source,bash]
 ----
-./sor help           # Show available commands
-./sor optimize       # System optimization (NVIDIA, firewall, journal)
-./sor cleanup        # Clean caches and temp files
-./sor sync           # Sync all git repositories
-./sor check          # Check repos for uncommitted changes
-./sor analyze        # Analyze GitHub workflow failures
-./sor pages          # Check GitHub Pages status
+# Step 1: Collect evidence (no changes)
+sor scan system
+
+# Step 2: Generate plan from evidence
+sor plan system
+
+# Step 3: Preview what would happen
+sor apply --dry-run
+
+# Step 4: Execute the plan
+sor apply
+
+# If needed: Roll back
+sor undo
+
+# View history
+sor receipt
 ----
 
-== Repository contents
+=== Quick mode
 
-[cols="1,3,1",options="header"]
+[source,bash]
+----
+# Scan + plan + preview in one command
+sor quick system
+
+# Scan + plan + apply with auto-approve (use with caution)
+sor quick cleanup --yes
+----
+
+=== Available packs
+
+[cols="1,3",options="header"]
 |===
-| Component | Description | Status
+| Pack | Description
 
-| `src/main.d`
-| Core CLI implementation in D
-| ✓ Active
+| `system`
+| System optimization (NVIDIA, firewall, journal, network BBR)
 
-| `dub.json`
-| D build configuration
-| ✓ Active
+| `cleanup`
+| Clean caches and temporary files
 
-| `.github/workflows/`
-| CI/CD and forge mirroring
-| ✓ Active
-
-| `docs/`
-| Specifications and design documents
-| ✓ Active
-
-| `hooks/`
-| Workflow validation scripts
-| ✓ Active
+| `repos`
+| Repository synchronization and status
 |===
 
-== Security requirements (baseline)
+=== Options
 
-* No MD5/SHA1
-* HTTPS only
+[source,bash]
+----
+--dry-run    Preview without making changes
+--yes        Auto-approve plan (use with caution)
+--all        Include all priorities (cleanup: include low)
+----
+
+== Architecture
+
+----
+src/
+├── main.d              # CLI entry point
+├── core/
+│   ├── types.d         # Evidence, Plan, Step, Receipt, UndoToken
+│   ├── engine.d        # Plan execution engine
+│   ├── security.d      # Input validation, secure file handling
+│   └── ecosystem.d     # AmbientOps integration
+└── packs/
+    ├── system.d        # System optimization pack
+    ├── cleanup.d       # Cache cleanup pack
+    └── repos.d         # Repository management pack
+----
+
+== Ecosystem integration
+
+----
+┌─────────────────────────────────────────────────────┐
+│                AmbientOps Ecosystem                  │
+├─────────────────────────────────────────────────────┤
+│                                                      │
+│  ┌─────────────┐      ┌─────────────────────┐       │
+│  │ Observatory │◄─────│ Operating Theatre   │       │
+│  │ (monitors)  │      │ (YOU ARE HERE)      │       │
+│  └─────────────┘      └──────────┬──────────┘       │
+│         │                        │                   │
+│         ▼                        ▼                   │
+│  ┌─────────────┐      ┌─────────────────────┐       │
+│  │    Ward     │      │   Emergency Room    │       │
+│  │ (displays)  │      │    (recovers)       │       │
+│  └─────────────┘      └─────────────────────┘       │
+│                                                      │
+└─────────────────────────────────────────────────────┘
+----
+
+* **Operating Theatre** → performs operations, generates run bundles
+* **Observatory** → ingests run bundles, correlates, forecasts
+* **Emergency Room** → receives crisis handoffs, executes recovery
+* **Ward** → displays system weather/health status
+
+== Documentation
+
+* link:docs/SEAMS-ANALYSIS.adoc[Seams Analysis] - Integration seam assessment
+* link:docs/MOSCOW-ECOSYSTEM.adoc[MoSCoW Analysis] - Prioritized requirements
+* link:ROADMAP.adoc[Roadmap] - Development phases
+
+== Security requirements
+
+* No MD5/SHA1 for cryptographic purposes
+* HTTPS only (no HTTP URLs)
 * No hardcoded secrets
+* Secure file permissions on cache and run directories
 * Dependencies must be pinned/locked
-* Every change must produce a receipt (scan and apply)
+* Every change produces a receipt (scan and apply)
 
 == License
 
 AGPL-3.0-or-later (plus Palimpsest where indicated).
-
-== Ecosystem Analysis
-
-This repository hosts the comprehensive seam analysis for the entire AmbientOps System Tools ecosystem:
-
-link:docs/SEAM-ANALYSIS.adoc[docs/SEAM-ANALYSIS.adoc]
-
-The analysis covers:
-
-* 4 CRITICAL issues (race conditions, command injection, principle violations)
-* 8 HIGH severity issues (schema gaps, enforcement failures)
-* 12 MEDIUM issues (performance, ergonomics, documentation)
-* Integration seam mapping across all subsystems
-* Remediation roadmap with prioritized fixes
-
-== Roadmap
-
-See `ROADMAP.adoc`.

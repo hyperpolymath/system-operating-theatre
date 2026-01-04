@@ -1,28 +1,34 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Hyperpolymath
 //
-// System Operating Room - Main Entry Point
-// A comprehensive system maintenance and operations toolkit
+// System Operating Theatre - Main Entry Point
+// A plan-first system management and hardening tool
 
 module main;
 
 import std.stdio;
-import std.process;
-import std.file;
-import std.path;
-import std.string;
-import std.array;
-import std.algorithm;
-import std.conv;
-import std.datetime;
 import std.getopt;
+import std.string;
+import std.file;
 
-// Configuration
-enum REPOS_DIR = "/var/home/hyper/repos";
-enum HOME_DIR = "/var/home/hyper";
+import core.types;
+import core.engine;
+import core.security;
+import core.ecosystem;
+import packs.system;
+import packs.cleanup;
+import packs.repos;
+
+/// Version info
+enum VERSION = "0.1.0";
+enum NAME = "System Operating Theatre";
+enum BINARY = "sor";
 
 void main(string[] args)
 {
+    // Security check
+    warnIfRoot();
+
     if (args.length < 2)
     {
         printUsage();
@@ -34,459 +40,678 @@ void main(string[] args)
 
     switch (command)
     {
-        case "optimize":
-            systemOptimize(subArgs);
+        // Plan-first workflow
+        case "scan":
+            cmdScan(subArgs);
             break;
-        case "cleanup":
-            systemCleanup(subArgs);
+        case "plan":
+            cmdPlan(subArgs);
             break;
-        case "sync":
-            syncRepos(subArgs);
+        case "apply":
+            cmdApply(subArgs);
             break;
+        case "undo":
+            cmdUndo(subArgs);
+            break;
+        case "receipt":
+            cmdReceipt(subArgs);
+            break;
+
+        // Quick commands (scan+plan+apply in one)
+        case "quick":
+            cmdQuick(subArgs);
+            break;
+
+        // Utility commands
         case "check":
-            checkRepos(subArgs);
+            checkRepos();
             break;
-        case "analyze":
-            analyzeWorkflows(subArgs);
+        case "status":
+            cmdStatus(subArgs);
             break;
-        case "pages":
-            checkPagesStatus(subArgs);
-            break;
+
+        // Help and version
         case "help":
+        case "--help":
+        case "-h":
             printUsage();
             break;
+        case "version":
+        case "--version":
+        case "-v":
+            printVersion();
+            break;
+
         default:
-            writefln("Unknown command: %s", command);
-            printUsage();
+            stderr.writefln("Unknown command: %s", command);
+            stderr.writeln("Run 'sor help' for usage information.");
     }
+}
+
+void printVersion()
+{
+    writefln("%s v%s", NAME, VERSION);
+    writeln("A plan-first system management tool");
+    writeln("");
+    writeln("Part of the AmbientOps ecosystem:");
+    writeln("  Operating Theatre → applies changes safely");
+    writeln("  Observatory → observes and correlates");
+    writeln("  Ward → displays system weather");
 }
 
 void printUsage()
 {
-    writeln("System Operating Room - System Maintenance Toolkit");
+    writefln("%s v%s", NAME, VERSION);
     writeln("");
     writeln("Usage: sor <command> [options]");
     writeln("");
-    writeln("Commands:");
-    writeln("  optimize     Run system optimization (firewall, journal, services)");
-    writeln("  cleanup      Clean caches and temporary files");
-    writeln("  sync         Sync all git repositories");
-    writeln("  check        Check repositories for uncommitted changes");
-    writeln("  analyze      Analyze GitHub workflow failures");
-    writeln("  pages        Check GitHub Pages status across repos");
-    writeln("  help         Show this help message");
+    writeln("PLAN-FIRST WORKFLOW:");
+    writeln("  scan <pack>        Collect evidence (no changes)");
+    writeln("  plan <pack>        Generate plan from scan results");
+    writeln("  apply              Execute approved plan");
+    writeln("  undo               Roll back using saved undo tokens");
+    writeln("  receipt            Show execution receipts");
     writeln("");
-    writeln("Examples:");
-    writeln("  sor optimize --dry-run");
-    writeln("  sor cleanup --all");
-    writeln("  sor sync --parallel");
-    writeln("  sor analyze --workflow=codeql");
+    writeln("PACKS:");
+    writeln("  system             System optimization (firewall, journal, network)");
+    writeln("  cleanup            Clean caches and temporary files");
+    writeln("  repos              Repository synchronization");
+    writeln("");
+    writeln("QUICK COMMANDS:");
+    writeln("  quick <pack>       Scan + plan + preview (no apply without --yes)");
+    writeln("  check              Show repositories with uncommitted changes");
+    writeln("  status             Show ecosystem status");
+    writeln("");
+    writeln("OPTIONS:");
+    writeln("  --dry-run          Preview without making changes");
+    writeln("  --yes              Auto-approve plan (use with caution)");
+    writeln("  --all              Include all priorities (cleanup: include low)");
+    writeln("");
+    writeln("EXAMPLES:");
+    writeln("  sor scan system             # Collect system evidence");
+    writeln("  sor plan system             # Generate optimization plan");
+    writeln("  sor apply --dry-run         # Preview what would be applied");
+    writeln("  sor apply                   # Execute the plan");
+    writeln("  sor quick cleanup --yes     # Quick cleanup with auto-approve");
+    writeln("  sor undo                    # Roll back last changes");
+    writeln("  sor receipt                 # Show execution history");
+    writeln("");
+    writeln("PHILOSOPHY:");
+    writeln("  • Scan before plan, plan before apply");
+    writeln("  • Show evidence, not hype");
+    writeln("  • Prefer reversible actions");
+    writeln("  • Always produce receipts");
 }
 
-// =============================================================================
-// System Optimization
-// =============================================================================
+// ============================================================================
+// Command implementations
+// ============================================================================
 
-void systemOptimize(string[] args)
+void cmdScan(string[] args)
+{
+    string pack = "";
+    if (args.length > 0)
+        pack = args[0];
+
+    if (pack.length == 0)
+    {
+        stderr.writeln("Error: specify a pack to scan (system, cleanup, repos)");
+        return;
+    }
+
+    ScanEnvelope envelope;
+
+    switch (pack)
+    {
+        case "system":
+            envelope = scanSystem();
+            break;
+        case "cleanup":
+            envelope = scanCleanup();
+            break;
+        case "repos":
+            envelope = scanRepos();
+            break;
+        default:
+            stderr.writefln("Unknown pack: %s", pack);
+            return;
+    }
+
+    // Save scan envelope for plan command
+    saveScanEnvelope(envelope);
+}
+
+void cmdPlan(string[] args)
+{
+    string pack = "";
+    bool showOnly = false;
+
+    getopt(args,
+        "show", &showOnly
+    );
+
+    if (args.length > 0)
+        pack = args[0];
+
+    if (pack.length == 0)
+    {
+        stderr.writeln("Error: specify a pack to plan (system, cleanup, repos)");
+        return;
+    }
+
+    // Load saved scan envelope
+    auto envelope = loadScanEnvelope(pack);
+    if (envelope.evidence.length == 0)
+    {
+        stderr.writefln("No scan data found for '%s'. Run 'sor scan %s' first.", pack, pack);
+        return;
+    }
+
+    Plan plan;
+
+    switch (pack)
+    {
+        case "system":
+            plan = planSystemOptimization(envelope);
+            break;
+        case "cleanup":
+            plan = planCleanup(envelope);
+            break;
+        case "repos":
+            plan = planRepoSync(envelope);
+            break;
+        default:
+            stderr.writefln("Unknown pack: %s", pack);
+            return;
+    }
+
+    writeln("");
+    printPlanPreview(plan);
+
+    // Save plan for apply command
+    savePlan(plan);
+
+    writeln("");
+    writeln("To apply this plan:");
+    writeln("  sor apply --dry-run    # Preview");
+    writeln("  sor apply              # Execute");
+}
+
+void cmdApply(string[] args)
 {
     bool dryRun = false;
-    bool skipNvidia = false;
-    bool skipFirewall = false;
+    bool autoApprove = false;
 
     getopt(args,
         "dry-run", &dryRun,
-        "skip-nvidia", &skipNvidia,
-        "skip-firewall", &skipFirewall
+        "yes", &autoApprove
     );
 
-    writeln("=== System Optimization ===");
-    writeln("");
-
-    if (!skipNvidia)
+    // Load saved plan
+    auto plan = loadPlan();
+    if (plan.steps.length == 0)
     {
-        writeln("[1/5] Configuring NVIDIA driver (blacklisting nouveau)...");
-        if (!dryRun)
+        stderr.writeln("No plan found. Run 'sor plan <pack>' first.");
+        return;
+    }
+
+    if (!dryRun && !autoApprove && !plan.approved)
+    {
+        writeln("");
+        printPlanPreview(plan);
+        writeln("");
+        write("Apply this plan? [y/N] ");
+        stdout.flush();
+
+        string response;
+        try
         {
-            auto result = executeShell("rpm-ostree kargs --append=modprobe.blacklist=nouveau --append=rd.driver.blacklist=nouveau 2>&1");
-            if (result.status == 0)
-                writeln("✓ Nouveau blacklisted");
-            else
-                writefln("⚠ Failed: %s", result.output);
+            response = stdin.readln().strip().toLower();
         }
-        else
-            writeln("  [dry-run] Would blacklist nouveau");
-    }
-
-    if (!skipFirewall)
-    {
-        writeln("[2/5] Configuring firewall...");
-        if (!dryRun)
+        catch (Exception e)
         {
-            // Tighten firewall - only allow necessary ports
-            string[] cmds = [
-                "firewall-cmd --permanent --add-port=22000/tcp",   // Syncthing
-                "firewall-cmd --permanent --add-port=22000/udp",   // Syncthing discovery
-                "firewall-cmd --permanent --add-port=21027/udp",   // Syncthing local
-                "firewall-cmd --permanent --add-port=1716/tcp",    // KDE Connect
-                "firewall-cmd --permanent --add-port=1716/udp",    // KDE Connect
-                "firewall-cmd --reload"
-            ];
-            foreach (cmd; cmds)
-            {
-                executeShell(cmd ~ " 2>/dev/null");
-            }
-            writeln("✓ Firewall configured (Syncthing + KDE Connect)");
+            response = "";
         }
-        else
-            writeln("  [dry-run] Would configure firewall ports");
+
+        if (response != "y" && response != "yes")
+        {
+            writeln("Plan not approved. Aborting.");
+            return;
+        }
+
+        plan = approvePlan(plan);
+    }
+    else if (autoApprove)
+    {
+        plan = approvePlan(plan);
     }
 
-    writeln("[3/5] Vacuuming journal logs...");
+    // Apply the plan
+    auto result = applyPlan(plan, dryRun);
+
     if (!dryRun)
     {
-        auto result = executeShell("sudo journalctl --vacuum-size=500M 2>&1");
-        writeln("✓ Journal vacuumed to 500MB");
-    }
-    else
-        writeln("  [dry-run] Would vacuum journal to 500MB");
+        // Create and save run bundle
+        auto bundle = createRunBundle(plan, result);
+        saveRunBundle(bundle);
 
-    writeln("[4/5] Disabling unnecessary services...");
-    if (!dryRun)
-    {
-        executeShell("systemctl disable --now ModemManager 2>/dev/null");
-        executeShell("systemctl mask qemu-guest-agent 2>/dev/null");
-        writeln("✓ ModemManager disabled, qemu-guest-agent masked");
-    }
-    else
-        writeln("  [dry-run] Would disable ModemManager and mask qemu-guest-agent");
+        // Export to Observatory if available
+        exportToObservatory(bundle);
 
-    writeln("[5/5] Configuring network (BBR congestion control)...");
-    if (!dryRun)
-    {
-        string sysctlConfig = `# BBR congestion control
-net.core.default_qdisc = fq
-net.ipv4.tcp_congestion_control = bbr
-net.core.rmem_max = 16777216
-net.core.wmem_max = 16777216
-net.ipv4.tcp_rmem = 4096 87380 16777216
-net.ipv4.tcp_wmem = 4096 65536 16777216
-net.ipv4.tcp_fastopen = 3
-`;
-        std.file.write("/tmp/99-network-performance.conf", sysctlConfig);
-        executeShell("sudo cp /tmp/99-network-performance.conf /etc/sysctl.d/ && sudo sysctl -p /etc/sysctl.d/99-network-performance.conf 2>&1");
-        writeln("✓ BBR and network buffers configured");
-    }
-    else
-        writeln("  [dry-run] Would configure BBR congestion control");
+        // Save undo tokens
+        saveUndoTokens(result.undoTokens, plan.id);
 
-    writeln("");
-    writeln("=== Optimization Complete ===");
-    if (!dryRun)
-        writeln("Note: Reboot required for NVIDIA changes to take effect");
+        // Generate and save receipt
+        auto receipt = generateReceipt(plan, result);
+        saveReceipt(receipt);
+    }
 }
 
-// =============================================================================
-// System Cleanup
-// =============================================================================
-
-void systemCleanup(string[] args)
+void cmdUndo(string[] args)
 {
-    bool all = false;
-    bool dryRun = false;
-
-    getopt(args,
-        "all", &all,
-        "dry-run", &dryRun
-    );
-
-    writeln("=== System Cleanup ===");
+    writeln("=== Undo Last Changes ===");
     writeln("");
 
-    struct CleanupTarget
+    // Load most recent undo tokens
+    auto tokens = loadUndoTokens();
+
+    if (tokens.length == 0)
     {
-        string name;
-        string path;
-        string priority;
+        writeln("No undo tokens available.");
+        return;
     }
 
-    CleanupTarget[] targets = [
-        CleanupTarget("debuginfod cache", HOME_DIR ~ "/.cache/debuginfod_client", "HIGH"),
-        CleanupTarget("npm cache", HOME_DIR ~ "/.npm", "MEDIUM"),
-        CleanupTarget("bun cache", HOME_DIR ~ "/.bun", "MEDIUM"),
-        CleanupTarget("Edge Dev cache", HOME_DIR ~ "/.var/app/com.microsoft.EdgeDev/cache", "MEDIUM"),
-        CleanupTarget("partial downloads", HOME_DIR ~ "/Downloads/*.part", "LOW"),
-    ];
+    writefln("Found %d undo tokens", tokens.length);
+    writeln("");
 
-    ulong totalFreed = 0;
-
-    foreach (target; targets)
+    foreach (i, token; tokens)
     {
-        if (std.file.exists(target.path) || target.path.canFind("*"))
-        {
-            ulong size = 0;
-            if (!target.path.canFind("*"))
-            {
-                try
-                {
-                    size = dirSize(target.path);
-                }
-                catch (Exception e)
-                {
-                    size = 0;
-                }
-            }
-
-            writefln("[%s] %s: %s", target.priority, target.name, formatSize(size));
-
-            if (!dryRun)
-            {
-                if (target.path.canFind("*"))
-                {
-                    executeShell("rm -f " ~ target.path ~ " 2>/dev/null");
-                }
-                else
-                {
-                    executeShell("rm -rf " ~ target.path ~ " 2>/dev/null");
-                }
-                writeln("  ✓ Cleaned");
-                totalFreed += size;
-            }
-            else
-            {
-                writeln("  [dry-run] Would clean");
-            }
-        }
+        writefln("%d. Step %s", i + 1, token.stepId[0 .. 8]);
+        writefln("   Command: %s", token.undoCommand);
+        writefln("   Used: %s", token.used ? "yes" : "no");
     }
 
     writeln("");
-    writefln("Total freed: %s", formatSize(totalFreed));
-    writeln("");
-    writeln("Note: Run with sudo for journal/coredump cleanup:");
-    writeln("  sudo journalctl --vacuum-size=500M");
-    writeln("  sudo rm -rf /var/lib/systemd/coredump/*");
-}
+    write("Execute undo? [y/N] ");
+    stdout.flush();
 
-ulong dirSize(string path)
-{
-    ulong size = 0;
+    string response;
     try
     {
-        foreach (entry; dirEntries(path, SpanMode.depth))
+        response = stdin.readln().strip().toLower();
+    }
+    catch (Exception e)
+    {
+        response = "";
+    }
+
+    if (response != "y" && response != "yes")
+    {
+        writeln("Undo cancelled.");
+        return;
+    }
+
+    // Execute undo in reverse order
+    int undone = 0;
+    foreach_reverse (ref token; tokens)
+    {
+        if (!token.used && executeUndo(token))
+            undone++;
+    }
+
+    writeln("");
+    writefln("Undone %d steps", undone);
+}
+
+void cmdReceipt(string[] args)
+{
+    writeln("=== Execution Receipts ===");
+    writeln("");
+
+    string runDir = RUN_BUNDLE_DIR;
+    if (!exists(runDir))
+    {
+        writeln("No receipts found.");
+        return;
+    }
+
+    int count = 0;
+    foreach (entry; dirEntries(runDir, "receipt-*.json", SpanMode.shallow))
+    {
+        try
         {
-            if (entry.isFile)
-                size += entry.size;
+            auto content = cast(string) read(entry.name);
+            import std.json : parseJSON;
+            auto json = parseJSON(content);
+            writefln("Receipt: %s", json["id"].str[0 .. 8]);
+            writefln("  Plan: %s", json["planId"].str[0 .. 8]);
+            writefln("  Time: %s", json["timestamp"].str);
+            writefln("  Executed: %d steps", json["executedCount"].integer);
+            writeln("");
+            count++;
+        }
+        catch (Exception e)
+        {
+            // Skip malformed receipts
+        }
+    }
+
+    if (count == 0)
+        writeln("No receipts found.");
+    else
+        writefln("Total: %d receipts", count);
+}
+
+void cmdQuick(string[] args)
+{
+    string pack = "";
+    bool dryRun = false;
+    bool autoApprove = false;
+    bool all = false;
+
+    getopt(args,
+        "dry-run", &dryRun,
+        "yes", &autoApprove,
+        "all", &all
+    );
+
+    if (args.length > 0)
+        pack = args[0];
+
+    if (pack.length == 0)
+    {
+        stderr.writeln("Error: specify a pack (system, cleanup, repos)");
+        return;
+    }
+
+    // Scan
+    ScanEnvelope envelope;
+    switch (pack)
+    {
+        case "system":
+            envelope = scanSystem();
+            break;
+        case "cleanup":
+            envelope = scanCleanup();
+            break;
+        case "repos":
+            envelope = scanRepos();
+            break;
+        default:
+            stderr.writefln("Unknown pack: %s", pack);
+            return;
+    }
+
+    // Plan
+    Plan plan;
+    switch (pack)
+    {
+        case "system":
+            plan = planSystemOptimization(envelope);
+            break;
+        case "cleanup":
+            plan = planCleanup(envelope, all);
+            break;
+        case "repos":
+            plan = planRepoSync(envelope);
+            break;
+        default:
+            return;
+    }
+
+    writeln("");
+    printPlanPreview(plan);
+
+    if (autoApprove || dryRun)
+    {
+        plan = approvePlan(plan);
+        auto result = applyPlan(plan, dryRun);
+
+        if (!dryRun)
+        {
+            auto bundle = createRunBundle(plan, result);
+            saveRunBundle(bundle);
+            exportToObservatory(bundle);
+            saveUndoTokens(result.undoTokens, plan.id);
+        }
+    }
+    else
+    {
+        writeln("");
+        writeln("To apply this plan, run: sor apply");
+        saveScanEnvelope(envelope);
+        savePlan(plan);
+    }
+}
+
+void cmdStatus(string[] args)
+{
+    printVersion();
+    writeln("");
+    printEcosystemStatus();
+}
+
+// ============================================================================
+// Persistence helpers
+// ============================================================================
+
+enum CACHE_DIR = "/var/home/hyper/.cache/sor";
+
+void saveScanEnvelope(ScanEnvelope envelope)
+{
+    if (!exists(CACHE_DIR))
+        mkdirRecurse(CACHE_DIR);
+
+    string filename = CACHE_DIR ~ "/scan-" ~ envelope.scanType ~ ".json";
+
+    import std.json : JSONValue;
+    JSONValue json;
+    json["id"] = envelope.id;
+    json["scanType"] = envelope.scanType;
+    json["timestamp"] = envelope.timestamp.toISOExtString();
+
+    JSONValue[] evidenceArray;
+    foreach (e; envelope.evidence)
+    {
+        JSONValue ev;
+        ev["id"] = e.id;
+        ev["category"] = e.category;
+        ev["description"] = e.description;
+        ev["currentValue"] = e.currentValue;
+        ev["expectedValue"] = e.expectedValue;
+        ev["priority"] = e.priority.to!string;
+
+        JSONValue meta;
+        foreach (k, v; e.metadata)
+            meta[k] = v;
+        ev["metadata"] = meta;
+
+        evidenceArray ~= ev;
+    }
+    json["evidence"] = JSONValue(evidenceArray);
+
+    std.file.write(filename, json.toPrettyString());
+    secureFile(filename);
+}
+
+ScanEnvelope loadScanEnvelope(string scanType)
+{
+    ScanEnvelope envelope;
+    string filename = CACHE_DIR ~ "/scan-" ~ scanType ~ ".json";
+
+    if (!exists(filename))
+        return envelope;
+
+    try
+    {
+        import std.json : parseJSON;
+        auto content = cast(string) read(filename);
+        auto json = parseJSON(content);
+
+        envelope.id = json["id"].str;
+        envelope.scanType = json["scanType"].str;
+
+        foreach (ev; json["evidence"].array)
+        {
+            Evidence e;
+            e.id = ev["id"].str;
+            e.category = ev["category"].str;
+            e.description = ev["description"].str;
+            e.currentValue = ev["currentValue"].str;
+            e.expectedValue = ev["expectedValue"].str;
+
+            // Parse priority
+            string prioStr = ev["priority"].str;
+            switch (prioStr)
+            {
+                case "critical": e.priority = Priority.critical; break;
+                case "high": e.priority = Priority.high; break;
+                case "medium": e.priority = Priority.medium; break;
+                case "low": e.priority = Priority.low; break;
+                default: e.priority = Priority.info; break;
+            }
+
+            // Parse metadata
+            if ("metadata" in ev)
+            {
+                foreach (string k, v; ev["metadata"].object)
+                    e.metadata[k] = v.str;
+            }
+
+            envelope.evidence ~= e;
         }
     }
     catch (Exception e)
     {
-        // Ignore permission errors
+        // Return empty envelope on error
     }
-    return size;
+
+    return envelope;
 }
 
-string formatSize(ulong bytes)
+void savePlan(Plan plan)
 {
-    if (bytes >= 1_073_741_824)
-        return format("%.1f GB", bytes / 1_073_741_824.0);
-    else if (bytes >= 1_048_576)
-        return format("%.1f MB", bytes / 1_048_576.0);
-    else if (bytes >= 1024)
-        return format("%.1f KB", bytes / 1024.0);
-    else
-        return format("%d B", bytes);
+    if (!exists(CACHE_DIR))
+        mkdirRecurse(CACHE_DIR);
+
+    string filename = CACHE_DIR ~ "/current-plan.json";
+
+    import std.json : JSONValue;
+    JSONValue json;
+    json["id"] = plan.id;
+    json["name"] = plan.name;
+    json["description"] = plan.description;
+    json["approved"] = plan.approved;
+
+    JSONValue[] stepsArray;
+    foreach (s; plan.steps)
+    {
+        JSONValue step;
+        step["id"] = s.id;
+        step["name"] = s.name;
+        step["description"] = s.description;
+        step["command"] = s.command;
+        step["preview"] = s.preview;
+        step["reversibility"] = s.reversibility.to!string;
+        step["undoCommand"] = s.undoCommand;
+        step["requiresElevation"] = s.requiresElevation;
+        stepsArray ~= step;
+    }
+    json["steps"] = JSONValue(stepsArray);
+
+    std.file.write(filename, json.toPrettyString());
+    secureFile(filename);
 }
 
-// =============================================================================
-// Repository Sync
-// =============================================================================
-
-void syncRepos(string[] args)
+Plan loadPlan()
 {
-    bool parallel = false;
-    bool dryRun = false;
+    Plan plan;
+    string filename = CACHE_DIR ~ "/current-plan.json";
 
-    getopt(args,
-        "parallel", &parallel,
-        "dry-run", &dryRun
-    );
+    if (!exists(filename))
+        return plan;
 
-    writeln("=== Syncing Repositories ===");
-    writeln("");
-
-    string[] repos;
-    foreach (entry; dirEntries(REPOS_DIR, SpanMode.shallow))
+    try
     {
-        if (entry.isDir)
+        import std.json : parseJSON;
+        auto content = cast(string) read(filename);
+        auto json = parseJSON(content);
+
+        plan.id = json["id"].str;
+        plan.name = json["name"].str;
+        plan.description = json["description"].str;
+        plan.approved = json["approved"].boolean;
+
+        foreach (s; json["steps"].array)
         {
-            string gitPath = buildPath(entry.name, ".git");
-            if (std.file.exists(gitPath))
+            Step step;
+            step.id = s["id"].str;
+            step.name = s["name"].str;
+            step.description = s["description"].str;
+            step.command = s["command"].str;
+            step.preview = s["preview"].str;
+            step.undoCommand = s["undoCommand"].str;
+            step.requiresElevation = s["requiresElevation"].boolean;
+
+            string revStr = s["reversibility"].str;
+            switch (revStr)
             {
-                repos ~= entry.name;
+                case "full": step.reversibility = Reversibility.full; break;
+                case "partial": step.reversibility = Reversibility.partial; break;
+                default: step.reversibility = Reversibility.none; break;
             }
+
+            plan.steps ~= step;
         }
     }
-
-    writefln("Found %d repositories", repos.length);
-    writeln("");
-
-    int synced = 0;
-    int failed = 0;
-
-    foreach (repo; repos)
+    catch (Exception e)
     {
-        string repoName = baseName(repo);
-        write(repoName ~ ": ");
-        stdout.flush();
-
-        if (dryRun)
-        {
-            writeln("[dry-run]");
-            continue;
-        }
-
-        auto fetchResult = executeShell("cd " ~ repo ~ " && git fetch --all -q 2>&1");
-        auto pullResult = executeShell("cd " ~ repo ~ " && git pull -q 2>&1");
-
-        if (fetchResult.status == 0 && pullResult.status == 0)
-        {
-            writeln("✓");
-            synced++;
-        }
-        else
-        {
-            writeln("⚠ (has local changes or conflicts)");
-            failed++;
-        }
+        // Return empty plan on error
     }
 
-    writeln("");
-    writefln("Synced: %d, Failed: %d", synced, failed);
+    return plan;
 }
 
-// =============================================================================
-// Check Repositories for Changes
-// =============================================================================
-
-void checkRepos(string[] args)
+UndoToken[] loadUndoTokens()
 {
-    writeln("=== Checking Repositories for Uncommitted Changes ===");
-    writeln("");
+    UndoToken[] tokens;
+    string runDir = RUN_BUNDLE_DIR;
 
-    int withChanges = 0;
+    if (!exists(runDir))
+        return tokens;
 
-    foreach (entry; dirEntries(REPOS_DIR, SpanMode.shallow))
+    // Find most recent undo file
+    string[] undoFiles;
+    foreach (entry; dirEntries(runDir, "undo-*.json", SpanMode.shallow))
+        undoFiles ~= entry.name;
+
+    if (undoFiles.length == 0)
+        return tokens;
+
+    // Sort and get most recent
+    import std.algorithm : sort;
+    undoFiles.sort!((a, b) => a > b);
+
+    try
     {
-        if (entry.isDir)
+        import std.json : parseJSON;
+        auto content = cast(string) read(undoFiles[0]);
+        auto json = parseJSON(content);
+
+        foreach (t; json["tokens"].array)
         {
-            string gitPath = buildPath(entry.name, ".git");
-            if (std.file.exists(gitPath))
-            {
-                auto result = executeShell("cd " ~ entry.name ~ " && git status --porcelain 2>/dev/null");
-                if (result.output.strip().length > 0)
-                {
-                    writefln("=== %s ===", baseName(entry.name));
-                    auto shortResult = executeShell("cd " ~ entry.name ~ " && git status --short 2>/dev/null | head -8");
-                    writeln(shortResult.output);
-                    withChanges++;
-                }
-            }
+            UndoToken token;
+            token.id = t["id"].str;
+            token.stepId = t["stepId"].str;
+            token.undoCommand = t["undoCommand"].str;
+            token.used = t["used"].boolean;
+            tokens ~= token;
         }
     }
-
-    if (withChanges == 0)
-        writeln("All repositories are clean!");
-    else
-        writefln("\n%d repositories have uncommitted changes", withChanges);
-}
-
-// =============================================================================
-// Analyze GitHub Workflows
-// =============================================================================
-
-void analyzeWorkflows(string[] args)
-{
-    string workflow = "";
-
-    getopt(args,
-        "workflow", &workflow
-    );
-
-    writeln("=== Analyzing GitHub Workflow Failures ===");
-    writeln("");
-
-    string[] workflowTypes = [
-        "Workflow Security Linter",
-        "Code Quality",
-        "CodeQL Security Analysis",
-        "OpenSSF Scorecard Enforcer",
-        "Mirror to Git Forges",
-        "GitHub Pages"
-    ];
-
-    if (workflow.length > 0)
+    catch (Exception e)
     {
-        workflowTypes = workflowTypes.filter!(w => w.toLower().canFind(workflow.toLower())).array;
+        // Return empty on error
     }
 
-    auto reposResult = executeShell(`gh repo list hyperpolymath --limit 100 --json name -q ".[].name" 2>/dev/null`);
-    string[] repos = reposResult.output.strip().split("\n");
-
-    foreach (wfType; workflowTypes)
-    {
-        writefln("=== %s FAILURES ===", wfType.toUpper());
-
-        foreach (repo; repos)
-        {
-            string jqFilter = format(`[.[] | select(.name == "%s")] | length`, wfType);
-            string cmd = format(`gh run list --repo "hyperpolymath/%s" --status failure --limit 10 --json name -q '%s' 2>/dev/null`, repo, jqFilter);
-            auto result = executeShell(cmd);
-
-            int count = 0;
-            try
-            {
-                count = result.output.strip().to!int;
-            }
-            catch (Exception e)
-            {
-                count = 0;
-            }
-
-            if (count > 0)
-                writefln("  %s: %d", repo, count);
-        }
-        writeln("");
-    }
-}
-
-// =============================================================================
-// Check GitHub Pages Status
-// =============================================================================
-
-void checkPagesStatus(string[] args)
-{
-    writeln("=== Checking GitHub Pages Status ===");
-    writeln("");
-
-    auto reposResult = executeShell(`gh repo list hyperpolymath --limit 100 --json name -q ".[].name" 2>/dev/null`);
-    string[] repos = reposResult.output.strip().split("\n");
-
-    writeln("Repos with Pages workflow but Pages NOT enabled:");
-    writeln("");
-
-    foreach (repo; repos)
-    {
-        // Check if Pages workflow exists
-        auto wfCheck = executeShell(format(`gh api "repos/hyperpolymath/%s/contents/.github/workflows/jekyll-gh-pages.yml" 2>/dev/null`, repo));
-
-        if (wfCheck.status == 0)
-        {
-            // Check if Pages is enabled
-            auto pagesCheck = executeShell(format(`gh api "repos/hyperpolymath/%s/pages" 2>/dev/null`, repo));
-
-            if (pagesCheck.status != 0)
-            {
-                writefln("  %s - has workflow but Pages NOT enabled", repo);
-            }
-        }
-    }
+    return tokens;
 }
